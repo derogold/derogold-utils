@@ -166,4 +166,4 @@ fabric.properties
 build
 jsbuild
 prebuilds
-dist
+yarn.lock

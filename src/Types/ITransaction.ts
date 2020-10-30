@@ -2,9 +2,9 @@
 //
 // Please see the included LICENSE file for more information.
 
-import {Transaction} from '../Transaction';
-import {Address} from '../Address';
-import {ED25519} from './ED25519';
+import { Transaction } from '../Transaction';
+import { Address } from '../Address';
+import { ED25519 } from './ED25519';
 
 export namespace Interfaces {
 
@@ -84,6 +84,7 @@ export namespace Interfaces {
          */
         input: {
             derivation: string;
+            tx_public_key?: string;
             outputIndex: number;
         };
     }

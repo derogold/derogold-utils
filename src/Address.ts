@@ -2,17 +2,13 @@
 //
 // Please see the included LICENSE file for more information.
 
-import {AddressPrefix} from './AddressPrefix';
-import {Base58} from 'turtlecoin-base58';
-import {Common} from './Common';
-import * as ConfigInterface from './Config';
-import {ED25519, TurtleCoinCrypto} from './Types';
-import {Mnemonics} from 'turtlecoin-mnemonics';
-import {Reader, Writer} from 'bytestream-helper';
-import Config = ConfigInterface.Interfaces.Config;
-
-/** @ignore */
-const Config: Config = require('../config.json');
+import { AddressPrefix } from './AddressPrefix';
+import { Base58 } from 'turtlecoin-base58';
+import { Common } from './Common';
+import { Config } from './Config';
+import { ED25519, TurtleCoinCrypto } from './Types';
+import { Mnemonics } from 'turtlecoin-mnemonics';
+import { Reader, Writer } from 'bytestream-helper';
 
 /** @ignore */
 interface Cache {
@@ -30,45 +26,42 @@ export enum SIZES {
  * Represents a TurtleCoin address
  */
 export class Address {
-
     /**
      * The Base58 encoded address
      */
-    public get address(): string {
+    public async address (): Promise<string> {
         return this.toString();
     }
 
     /**
      * The address index number [0=primary]
      */
-    public get subwalletIndex(): number {
+    public get subwalletIndex (): number {
         return this.m_subwalletIndex;
     }
 
     /**
      * The seed phrase for the address if available
      */
-    public get seed(): string | undefined {
+    public get seed (): string | undefined {
         return this.m_seed;
     }
 
     /**
      * The mnemonic phrase for the address if available
      */
-    public get mnemonic(): string | undefined {
+    public get mnemonic (): string | undefined {
         return (this.m_seed) ? Mnemonics.encode(this.m_seed) : undefined;
     }
 
     /**
      * The payment Id of the address if one exists
      */
-    public get paymentId(): string {
-        let s: string;
-        s = Buffer.from(this.m_paymentId || '', 'hex').toString().toLowerCase();
-        return s;
+    public get paymentId (): string {
+        return Buffer.from(this.m_paymentId || '', 'hex').toString().toLowerCase();
     }
 
-    public set paymentId(paymentId: string) {
+    public set paymentId (paymentId: string) {
         if (!Common.isHex64(paymentId)) {
             throw new Error('Invalid payment ID supplied');
         }
@@ -79,33 +72,33 @@ export class Address {
     /**
      * The address prefix
      */
-    public get prefix(): AddressPrefix {
+    public get prefix (): AddressPrefix {
         return this.m_prefix;
     }
 
-    public set prefix(addressPrefix: AddressPrefix) {
+    public set prefix (addressPrefix: AddressPrefix) {
         this.m_prefix = addressPrefix;
     }
 
     /**
      * The address spend keys
      */
-    public get spend(): ED25519.KeyPair {
+    public get spend (): ED25519.KeyPair {
         return this.m_keys.spend;
     }
 
-    public set spend(keys: ED25519.KeyPair) {
+    public set spend (keys: ED25519.KeyPair) {
         this.m_keys.spend = keys;
     }
 
     /**
      * The address view keys
      */
-    public get view(): ED25519.KeyPair {
+    public get view (): ED25519.KeyPair {
         return this.m_keys.view;
     }
 
-    public set view(keys: ED25519.KeyPair) {
+    public set view (keys: ED25519.KeyPair) {
         this.m_keys.view = keys;
     }
 
@@ -115,7 +108,7 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static fromAddress(address: string, prefix?: AddressPrefix | number): Address {
+    public static async fromAddress (address: string, prefix?: AddressPrefix | number): Promise<Address> {
         if (typeof prefix === 'number') {
             prefix = new AddressPrefix(prefix);
         } else if (typeof prefix === 'undefined') {
@@ -143,7 +136,7 @@ export class Address {
         const expectedChecksum = reader.bytes(SIZES.CHECKSUM).toString('hex');
 
         const checksum = (new Reader(
-            TurtleCoinCrypto.cn_fast_hash(decodedPrefix + paymentId + publicSpend + publicView),
+            await TurtleCoinCrypto.cn_fast_hash(decodedPrefix + paymentId + publicSpend + publicView)
         )).bytes(SIZES.CHECKSUM).toString('hex');
 
         if (expectedChecksum !== checksum) {
@@ -154,9 +147,9 @@ export class Address {
 
         result.m_paymentId = paymentId;
 
-        result.m_keys = new ED25519.Keys(
-            new ED25519.KeyPair(publicSpend),
-            new ED25519.KeyPair(publicView),
+        result.m_keys = await ED25519.Keys.from(
+            await ED25519.KeyPair.from(publicSpend),
+            await ED25519.KeyPair.from(publicView)
         );
 
         return result;
@@ -170,11 +163,12 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static fromPublicKeys(
+    public static async fromPublicKeys (
         publicSpendKey: string,
         publicViewKey: string,
         paymentId?: string,
-        prefix?: AddressPrefix | number): Address {
+        prefix?: AddressPrefix | number
+    ): Promise<Address> {
         if (typeof prefix === 'number') {
             prefix = new AddressPrefix(prefix);
         }
@@ -189,9 +183,9 @@ export class Address {
             address.paymentId = paymentId;
         }
 
-        address.m_keys = new ED25519.Keys(
-            new ED25519.KeyPair(publicSpendKey),
-            new ED25519.KeyPair(publicViewKey),
+        address.m_keys = await ED25519.Keys.from(
+            await ED25519.KeyPair.from(publicSpendKey),
+            await ED25519.KeyPair.from(publicViewKey)
         );
 
         return address;
@@ -205,11 +199,12 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static fromViewOnlyKeys(
+    public static async fromViewOnlyKeys (
         publicSpendKey: string,
         privateViewKey: string,
         paymentId?: string,
-        prefix?: AddressPrefix | number): Address {
+        prefix?: AddressPrefix | number
+    ): Promise<Address> {
         if (typeof prefix === 'number') {
             prefix = new AddressPrefix(prefix);
         }
@@ -224,9 +219,9 @@ export class Address {
             address.paymentId = paymentId;
         }
 
-        address.m_keys = new ED25519.Keys(
-            new ED25519.KeyPair(publicSpendKey),
-            new ED25519.KeyPair(undefined, privateViewKey),
+        address.m_keys = await ED25519.Keys.from(
+            await ED25519.KeyPair.from(publicSpendKey),
+            await ED25519.KeyPair.from(undefined, privateViewKey)
         );
 
         return address;
@@ -239,10 +234,11 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static fromKeys(
+    public static async fromKeys (
         privateSpendKey: string,
         privateViewKey: string,
-        prefix?: AddressPrefix | number): Address {
+        prefix?: AddressPrefix | number
+    ): Promise<Address> {
         if (typeof prefix === 'number') {
             prefix = new AddressPrefix(prefix);
         }
@@ -253,12 +249,12 @@ export class Address {
             address.prefix = prefix;
         }
 
-        address.m_keys = new ED25519.Keys(
-            new ED25519.KeyPair(undefined, privateSpendKey),
-            new ED25519.KeyPair(undefined, privateViewKey),
+        address.m_keys = await ED25519.Keys.from(
+            await ED25519.KeyPair.from(undefined, privateSpendKey),
+            await ED25519.KeyPair.from(undefined, privateViewKey)
         );
 
-        const derivedViewKey = new ED25519.KeyPair(undefined, privateSpendKey, undefined, 1);
+        const derivedViewKey = await ED25519.KeyPair.from(undefined, privateSpendKey, undefined, 1);
 
         if (derivedViewKey.privateKey === privateViewKey) {
             address.m_seed = privateSpendKey;
@@ -274,7 +270,11 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static fromMnemonic(mnemonic: string, language?: string, prefix?: AddressPrefix | number): Address {
+    public static async fromMnemonic (
+        mnemonic: string,
+        language?: string,
+        prefix?: AddressPrefix | number
+    ): Promise<Address> {
         const seed = Mnemonics.decode(mnemonic);
 
         return Address.fromSeed(seed, language, prefix);
@@ -287,13 +287,13 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static fromSeed(seed: string, language?: string, prefix?: AddressPrefix | number): Address {
+    public static async fromSeed (seed: string, language?: string, prefix?: AddressPrefix | number): Promise<Address> {
         if (typeof prefix === 'number') {
             prefix = new AddressPrefix(prefix);
         }
 
         if (!Common.isHex64(seed)) {
-            seed = TurtleCoinCrypto.cn_fast_hash(seed);
+            seed = await TurtleCoinCrypto.cn_fast_hash(seed);
         }
 
         const address = new Address();
@@ -306,9 +306,9 @@ export class Address {
             address.prefix = prefix;
         }
 
-        address.m_keys = new ED25519.Keys(
-            new ED25519.KeyPair(undefined, seed),
-            new ED25519.KeyPair(undefined, seed, undefined, 1));
+        address.m_keys = await ED25519.Keys.from(
+            await ED25519.KeyPair.from(undefined, seed),
+            await ED25519.KeyPair.from(undefined, seed, undefined, 1));
 
         return address;
     }
@@ -320,8 +320,12 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static fromEntropy(entropy?: string, language?: string, prefix?: AddressPrefix | number): Address {
-        const seed = Address.generateSeed(entropy);
+    public static async fromEntropy (
+        entropy?: string,
+        language?: string,
+        prefix?: AddressPrefix | number
+    ): Promise<Address> {
+        const seed = await Address.generateSeed(entropy);
 
         return Address.fromSeed(seed, language, prefix);
     }
@@ -332,8 +336,8 @@ export class Address {
      * @param [iterations] the number of iterations to run the hashing function when generating the seed
      * @returns a new randomly created seed
      */
-    public static generateSeed(entropy?: string, iterations?: number): string {
-        const random = new ED25519.KeyPair(undefined, undefined, entropy, iterations);
+    public static async generateSeed (entropy?: string, iterations?: number): Promise<string> {
+        const random = await ED25519.KeyPair.from(undefined, undefined, entropy, iterations);
 
         return random.privateKey;
     }
@@ -346,16 +350,17 @@ export class Address {
      * @param [prefix] the address prefix
      * @returns a new address object
      */
-    public static generateSubwallet(
+    public static async generateSubwallet (
         privateSpendKey: string,
         subwalletIndex: number,
         language?: string,
-        prefix?: AddressPrefix | number): Address {
+        prefix?: AddressPrefix | number
+    ): Promise<Address> {
         if (typeof prefix === 'number') {
             prefix = new AddressPrefix(prefix);
         }
 
-        if (!TurtleCoinCrypto.checkScalar(privateSpendKey)) {
+        if (!await TurtleCoinCrypto.checkScalar(privateSpendKey)) {
             throw new Error('Invalid private spend key supplied');
         }
 
@@ -373,11 +378,12 @@ export class Address {
             address.prefix = prefix;
         }
 
-        const view = new ED25519.KeyPair(undefined, privateSpendKey, undefined, 1);
+        const view = await ED25519.KeyPair.from(undefined, privateSpendKey, undefined, 1);
 
-        const spend = TurtleCoinCrypto.generateDeterministicSubwalletKeys(privateSpendKey, subwalletIndex);
+        const spend = await TurtleCoinCrypto.generateDeterministicSubwalletKeys(privateSpendKey, subwalletIndex);
 
-        address.m_keys = new ED25519.Keys(new ED25519.KeyPair(spend.publicKey, spend.privateKey), view);
+        address.m_keys = await ED25519.Keys.from(
+            await ED25519.KeyPair.from(spend.public_key, spend.private_key), view);
 
         return address;
     }
@@ -387,23 +393,23 @@ export class Address {
      * @param rawAddress the raw address in hexadecimal form
      * @retursn the Base58 representation of the address
      */
-    public static encodeRaw(rawAddress: string): string {
+    public static encodeRaw (rawAddress: string): string {
         return Base58.encode(rawAddress);
     }
 
     protected m_paymentId?: string;
     protected m_seed?: string;
     protected m_keys: ED25519.Keys = new ED25519.Keys();
-    protected m_language: string = 'english';
-    protected m_subwalletIndex: number = 0;
+    protected m_language = 'english';
+    protected m_subwalletIndex = 0;
     private m_prefix: AddressPrefix = new AddressPrefix(Config.addressPrefix);
-    private m_cached: Cache = {addressPrefix: '', address: ''};
+    private m_cached: Cache = { addressPrefix: '', address: '' };
 
     /**
      * Returns the Base58 encoded address
      * @returns Base58 encoded address
      */
-    public toString(): string {
+    public async toString (): Promise<string> {
         const writer = new Writer();
 
         writer.hex(this.prefix.hex);
@@ -420,7 +426,8 @@ export class Address {
             return Base58.encode(this.m_cached.address);
         }
 
-        const checksum = TurtleCoinCrypto.cn_fast_hash(writer.blob).slice(0, 8);
+        const checksum = (await TurtleCoinCrypto.cn_fast_hash(writer.blob))
+            .slice(0, 8);
 
         this.m_cached.addressPrefix = writer.blob;
 

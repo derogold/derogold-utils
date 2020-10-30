@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['10', '11', '12', '13']
+        node: ['10', '11', '12', '13', '14']
     name: ${{ matrix.os }} - Node ${{ matrix.node }} Test
     steps:
     - uses: actions/checkout@v1
@@ -21,7 +21,15 @@ jobs:
       with:
         node-version: ${{ matrix.node }}
         registry-url: 'https://registry.npmjs.org'
+    - name: Install Windows Node.js Build Tools
+      if: matrix.os == 'windows-latest'
+      run: npm install -g windows-build-tools --vs2015
     - name: Install Dependencies
       run: npm install
     - name: Execute Unit Tests
       run: npm test
+    - name: Publish to NPM
+      if: matrix.node == '12' && matrix.os == 'ubuntu-latest' && github.event_name == 'release' && github.repository == 'turtlecoin/turtlecoin-utils'
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      run: npm publish

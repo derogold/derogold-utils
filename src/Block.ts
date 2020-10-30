@@ -2,15 +2,12 @@
 //
 // Please see the included LICENSE file for more information.
 
-import * as ConfigInterface from './Config';
-import {Transaction} from './Transaction';
-import {ParentBlock} from './ParentBlock';
-import {TransactionInputs, TransactionOutputs, TurtleCoinCrypto} from './Types';
-import {Reader, Writer} from 'bytestream-helper';
-import Config = ConfigInterface.Interfaces.Config;
-
-/** @ignore */
-const Config = require('../config.json');
+import { Config, ICoinConfig, ICoinRunningConfig } from './Config';
+import { Transaction } from './Transaction';
+import { ParentBlock } from './ParentBlock';
+import { TransactionInputs, TransactionOutputs, TurtleCoinCrypto } from './Types';
+import { Reader, Writer } from 'bytestream-helper';
+import { Common } from './Common';
 
 /** @ignore */
 interface Cache {
@@ -24,18 +21,17 @@ interface Cache {
  * Represents a TurtleCoin Block
  */
 export class Block {
-
     /**
      * The size of the block in bytes
      */
-    public get size(): number {
+    public get size (): number {
         return this.toBuffer().length;
     }
 
     /**
      * The height of the block
      */
-    public get height(): number {
+    public get height (): number {
         if (this.m_minerTransaction.inputs.length !== 0) {
             return (this.m_minerTransaction.inputs[0] as TransactionInputs.CoinbaseInput).blockIndex;
         } else {
@@ -46,14 +42,14 @@ export class Block {
     /**
      * The nonce of the block
      */
-    public get nonce(): number {
+    public get nonce (): number {
         const writer = new Writer();
         writer.uint32_t(this.m_nonce, true);
         const reader = new Reader(writer.buffer);
         return reader.uint32_t().toJSNumber();
     }
 
-    public set nonce(value: number) {
+    public set nonce (value: number) {
         if (value > 0xFFFFFFFF) {
             throw new Error('value exceeds uint32_t maximum');
         }
@@ -67,15 +63,15 @@ export class Block {
     /**
      * The transactions hashes (non-coinbase) included in the block
      */
-    public get transactions(): string[] {
+    public get transactions (): string[] {
         return this.m_transactions;
     }
 
     /**
      * The base transaction branch of the block
      */
-    public get baseTransactionBranch(): string[] {
-        const transactions = [this.m_minerTransaction.hash].concat(this.transactions);
+    public async baseTransactionBranch (): Promise<string[]> {
+        const transactions = [await this.m_minerTransaction.hash()].concat(this.transactions);
 
         return TurtleCoinCrypto.tree_branch(transactions);
     }
@@ -83,35 +79,37 @@ export class Block {
     /**
      * The transaction tree hash of the block
      */
-    public get transactionTreeHash(): { hash: string, count: number } {
-        const transactions = [this.m_minerTransaction.hash].concat(this.transactions);
+    public async transactionTreeHash (): Promise<{ hash: string, count: number }> {
+        const transactions = [await this.m_minerTransaction.hash()].concat(this.transactions);
 
-        const treeHash = TurtleCoinCrypto.tree_hash(transactions);
+        const treeHash = await TurtleCoinCrypto.tree_hash(transactions);
 
-        return {hash: treeHash, count: transactions.length};
+        return { hash: treeHash, count: transactions.length };
     }
 
     /**
      * The merkle root of the block
      */
-    public get merkleRoot(): string {
+    public async merkleRoot (): Promise<string> {
         const writer = new Writer();
 
         writer.varint(this.m_majorVersion);
         writer.varint(this.m_minorVersion);
 
-        if (this.m_majorVersion < this.m_activateParentBlockVersion) {
+        if (this.m_majorVersion < this.m_config.activateParentBlockVersion) {
             writer.varint(this.m_timestamp.getTime() / 1000);
         }
 
         writer.hash(this.m_previousBlockHash);
 
-        if (this.m_majorVersion < this.m_activateParentBlockVersion) {
+        if (this.m_majorVersion < this.m_config.activateParentBlockVersion) {
             writer.uint32_t(this.m_nonce, true);
         }
 
-        writer.hash(this.transactionTreeHash.hash);
-        writer.varint(this.transactionTreeHash.count);
+        const transactionTreeHash = await this.transactionTreeHash();
+
+        writer.hash(transactionTreeHash.hash);
+        writer.varint(transactionTreeHash.count);
 
         return getBlockHash(writer.buffer);
     }
@@ -119,30 +117,30 @@ export class Block {
     /**
      * The major block version
      */
-    public get majorVersion(): number {
+    public get majorVersion (): number {
         return this.m_majorVersion;
     }
 
-    public set majorVersion(majorVersion: number) {
+    public set majorVersion (majorVersion: number) {
         this.m_majorVersion = majorVersion;
     }
 
     /**
      * The minor block version
      */
-    public get minorVersion(): number {
+    public get minorVersion (): number {
         return this.m_minorVersion;
     }
 
-    public set minorVersion(minorVersion: number) {
+    public set minorVersion (minorVersion: number) {
         this.m_minorVersion = minorVersion;
     }
 
     /**
      * The block hash (id)
      */
-    public get hash(): string {
-        const blob = this.toHashingBuffer();
+    public async hash (): Promise<string> {
+        const blob = await this.toHashingBuffer();
 
         if (this.m_cache.blob === blob.toString('hex') && this.m_cache.hash) {
             return this.m_cache.hash;
@@ -150,7 +148,7 @@ export class Block {
 
         this.m_cache.blob = blob.toString('hex');
 
-        this.m_cache.hash = getBlockHash(blob);
+        this.m_cache.hash = await getBlockHash(blob);
 
         return this.m_cache.hash;
     }
@@ -158,8 +156,8 @@ export class Block {
     /**
      * The block PoW hash
      */
-    public get longHash(): string {
-        const blob = this.toHashingBuffer(true);
+    public async longHash (): Promise<string> {
+        const blob = await this.toHashingBuffer(true);
 
         if (this.m_cache.longBlob === blob.toString('hex') && this.m_cache.longHash) {
             return this.m_cache.longHash;
@@ -167,7 +165,7 @@ export class Block {
 
         this.m_cache.longBlob = blob.toString('hex');
 
-        this.m_cache.longHash = getBlockPoWHash(blob, this.m_majorVersion);
+        this.m_cache.longHash = await getBlockPoWHash(blob, this.m_majorVersion);
 
         return this.m_cache.longHash;
     }
@@ -175,56 +173,56 @@ export class Block {
     /**
      * The timestamp of the block
      */
-    public get timestamp(): Date {
+    public get timestamp (): Date {
         return this.m_timestamp;
     }
 
-    public set timestamp(timestamp: Date) {
+    public set timestamp (timestamp: Date) {
         this.m_timestamp = timestamp;
     }
 
     /**
      * The previous block hash of the block
      */
-    public get previousBlockHash(): string {
+    public get previousBlockHash (): string {
         return this.m_previousBlockHash;
     }
 
-    public set previousBlockHash(previousBlockHash: string) {
+    public set previousBlockHash (previousBlockHash: string) {
         this.m_previousBlockHash = previousBlockHash;
     }
 
     /**
      * The miner (coinbase) transaction of the block
      */
-    public get minerTransaction(): Transaction {
+    public get minerTransaction (): Transaction {
         return this.m_minerTransaction;
     }
 
-    public set minerTransaction(minerTransaction: Transaction) {
+    public set minerTransaction (minerTransaction: Transaction) {
         this.m_minerTransaction = minerTransaction;
     }
 
     /**
      * The parent block of the block
      */
-    public get parentBlock(): ParentBlock {
+    public get parentBlock (): ParentBlock {
         return this.m_parentBlock;
     }
 
-    public set parentBlock(parentBlock: ParentBlock) {
+    public set parentBlock (parentBlock: ParentBlock) {
         this.m_parentBlock = parentBlock;
     }
 
     /**
      * Defines what major block version activates the use of parent blocks
      */
-    public get activateParentBlockVersion(): number {
-        return this.m_activateParentBlockVersion;
+    public get activateParentBlockVersion (): number {
+        return this.m_config.activateParentBlockVersion;
     }
 
-    public set activateParentBlockVersion(activateParentBlockVersion: number) {
-        this.m_activateParentBlockVersion = activateParentBlockVersion;
+    public set activateParentBlockVersion (activateParentBlockVersion: number) {
+        this.m_config.activateParentBlockVersion = activateParentBlockVersion;
     }
 
     /**
@@ -233,20 +231,19 @@ export class Block {
      * @param [config] the configuration that may define the major block version to activate parent block usage
      * @returns the new block object
      */
-    public static from(data: Buffer | string, config?: Config): Block {
-        const activateParentBlockVersion =
-            (config && config.activateParentBlockVersion
-                && typeof config.activateParentBlockVersion !== 'undefined') ?
-                config.activateParentBlockVersion : 2;
-
+    public static async from (data: Buffer | string, config?: ICoinConfig): Promise<Block> {
         const block = new Block();
+
+        if (config) {
+            block.m_config = Common.mergeConfig(config);
+        }
 
         const reader = new Reader(data);
 
         block.m_majorVersion = reader.varint().toJSNumber();
         block.m_minorVersion = reader.varint().toJSNumber();
 
-        if (block.m_majorVersion >= activateParentBlockVersion) {
+        if (block.m_majorVersion >= block.m_config.activateParentBlockVersion) {
             block.m_previousBlockHash = reader.hash();
             block.m_parentBlock.majorVersion = reader.varint().toJSNumber();
             block.m_parentBlock.minorVersion = reader.varint().toJSNumber();
@@ -254,7 +251,7 @@ export class Block {
 
         block.m_timestamp = new Date(reader.varint().toJSNumber() * 1000);
 
-        if (block.m_majorVersion >= activateParentBlockVersion) {
+        if (block.m_majorVersion >= block.m_config.activateParentBlockVersion) {
             block.m_parentBlock.previousBlockHash = reader.hash();
         } else {
             block.m_previousBlockHash = reader.hash();
@@ -262,10 +259,10 @@ export class Block {
 
         block.m_nonce = reader.uint32_t(true).toJSNumber();
 
-        if (block.m_majorVersion >= activateParentBlockVersion) {
+        if (block.m_majorVersion >= block.m_config.activateParentBlockVersion) {
             block.m_parentBlock.transactionCount = reader.varint().toJSNumber();
 
-            const baseTransactionBranchDepth = TurtleCoinCrypto.tree_depth(block.m_parentBlock.transactionCount);
+            const baseTransactionBranchDepth = await TurtleCoinCrypto.tree_depth(block.m_parentBlock.transactionCount);
 
             for (let i = 0; i < baseTransactionBranchDepth; i++) {
                 block.m_parentBlock.baseTransactionBranch.push(reader.hash());
@@ -279,7 +276,7 @@ export class Block {
             for (let i = 0; i < p_inputs; i++) {
                 if (reader.uint8_t().toJSNumber() === TransactionInputs.InputType.COINBASE) {
                     block.m_parentBlock.minerTransaction.inputs.push(
-                        new TransactionInputs.CoinbaseInput(reader.varint().toJSNumber()),
+                        new TransactionInputs.CoinbaseInput(reader.varint().toJSNumber())
                     );
                 } else {
                     throw new Error('Non-coinbase input found in parent block miner transaction');
@@ -293,7 +290,7 @@ export class Block {
                 const type = reader.uint8_t().toJSNumber();
                 if (type === TransactionOutputs.OutputType.KEY) {
                     block.m_parentBlock.minerTransaction.outputs.push(
-                        new TransactionOutputs.KeyOutput(amount, reader.hash()),
+                        new TransactionOutputs.KeyOutput(amount, reader.hash())
                     );
                 } else {
                     throw new Error('Unknown output type detected');
@@ -304,14 +301,14 @@ export class Block {
 
             const p_extra = reader.bytes(p_extraLength);
 
-            block.m_parentBlock.minerTransaction.parseExtra(p_extra);
+            await block.m_parentBlock.minerTransaction.parseExtra(p_extra);
 
             if (block.m_parentBlock.minerTransaction.version >= 2) {
                 block.m_parentBlock.minerTransaction.ignoredField = reader.varint().toJSNumber();
             }
 
-            const blockchainBranchDepth = (block.m_parentBlock.minerTransaction.mergedMining) ?
-                block.m_parentBlock.minerTransaction.mergedMining.depth : 0;
+            const blockchainBranchDepth = (block.m_parentBlock.minerTransaction.mergedMining)
+                ? block.m_parentBlock.minerTransaction.mergedMining.depth : 0;
 
             for (let i = 0; i < blockchainBranchDepth; i++) {
                 block.m_parentBlock.blockchainBranch.push(reader.hash());
@@ -326,7 +323,7 @@ export class Block {
         for (let i = 0; i < inputs; i++) {
             if (reader.uint8_t().toJSNumber() === TransactionInputs.InputType.COINBASE) {
                 block.m_minerTransaction.inputs.push(
-                    new TransactionInputs.CoinbaseInput(reader.varint().toJSNumber()),
+                    new TransactionInputs.CoinbaseInput(reader.varint().toJSNumber())
                 );
             } else {
                 throw new Error('Non-coinbase input found in miner transaction');
@@ -340,7 +337,7 @@ export class Block {
             const type = reader.uint8_t().toJSNumber();
             if (type === TransactionOutputs.OutputType.KEY) {
                 block.m_minerTransaction.outputs.push(
-                    new TransactionOutputs.KeyOutput(amount, reader.hash()),
+                    new TransactionOutputs.KeyOutput(amount, reader.hash())
                 );
             } else {
                 throw new Error('Unknown output type detected');
@@ -351,7 +348,7 @@ export class Block {
 
         const extra = reader.bytes(extraLength);
 
-        block.m_minerTransaction.parseExtra(extra);
+        await block.m_minerTransaction.parseExtra(extra);
 
         const txnCount = reader.varint().toJSNumber();
 
@@ -366,33 +363,33 @@ export class Block {
         return block;
     }
 
-    protected m_majorVersion: number = 0;
-    protected m_minorVersion: number = 0;
+    protected m_majorVersion = 0;
+    protected m_minorVersion = 0;
     protected m_timestamp: Date = new Date();
     protected m_previousBlockHash: string = ''.padStart(64, '0');
     protected m_parentBlock: ParentBlock = new ParentBlock();
-    protected m_nonce: number = 0;
+    protected m_nonce = 0;
     protected m_minerTransaction: Transaction = new Transaction();
     protected m_transactions: string[] = [];
-    protected m_activateParentBlockVersion: number = Config.activateParentBlockVersion || 2;
+    protected m_config: ICoinRunningConfig = Config;
     protected m_cache: Cache = {
         blob: '',
         hash: '',
         longBlob: '',
-        longHash: '',
+        longHash: ''
     };
 
     /**
      * Returns a Buffer representation of the block
      * @returns the resulting Buffer
      */
-    public toBuffer(): Buffer {
+    public toBuffer (): Buffer {
         const writer = new Writer();
 
         writer.varint(this.m_majorVersion);
         writer.varint(this.m_minorVersion);
 
-        if (this.m_majorVersion >= this.m_activateParentBlockVersion) {
+        if (this.m_majorVersion >= this.m_config.activateParentBlockVersion) {
             writer.hash(this.m_previousBlockHash);
             writer.varint(this.m_parentBlock.majorVersion);
             writer.varint(this.m_parentBlock.minorVersion);
@@ -400,7 +397,7 @@ export class Block {
 
         writer.varint(this.m_timestamp.getTime() / 1000);
 
-        if (this.m_majorVersion >= this.m_activateParentBlockVersion) {
+        if (this.m_majorVersion >= this.m_config.activateParentBlockVersion) {
             writer.hash(this.m_parentBlock.previousBlockHash);
         } else {
             writer.hash(this.m_previousBlockHash);
@@ -408,7 +405,7 @@ export class Block {
 
         writer.uint32_t(this.m_nonce, true);
 
-        if (this.m_majorVersion >= this.m_activateParentBlockVersion) {
+        if (this.m_majorVersion >= this.m_config.activateParentBlockVersion) {
             writer.varint(this.m_parentBlock.transactionCount);
 
             if (Array.isArray(this.m_parentBlock.baseTransactionBranch)) {
@@ -445,7 +442,7 @@ export class Block {
      * Returns a hexadecimal (blob) representation of the block
      * @returns the hexadecimal representation of the block
      */
-    public toString(): string {
+    public toString (): string {
         return this.toBuffer().toString('hex');
     }
 
@@ -454,13 +451,13 @@ export class Block {
      * @param [headerOnly] whether to return just the header or the full block
      * @returns the hashing buffer
      */
-    public toHashingBuffer(headerOnly: boolean = false): Buffer {
+    public async toHashingBuffer (headerOnly = false): Promise<Buffer> {
         const writer = new Writer();
 
         writer.varint(this.m_majorVersion);
         writer.varint(this.m_minorVersion);
 
-        if (this.m_majorVersion >= this.m_activateParentBlockVersion) {
+        if (this.m_majorVersion >= this.m_config.activateParentBlockVersion) {
             writer.hash(this.m_previousBlockHash);
         } else {
             writer.varint(this.m_timestamp.getTime() / 1000);
@@ -468,11 +465,13 @@ export class Block {
             writer.uint32_t(this.m_nonce, true);
         }
 
-        writer.hash(this.transactionTreeHash.hash);
+        const transactionTreeHash = await this.transactionTreeHash();
 
-        writer.varint(this.transactionTreeHash.count);
+        writer.hash(transactionTreeHash.hash);
 
-        if (this.m_majorVersion >= this.m_activateParentBlockVersion) {
+        writer.varint(transactionTreeHash.count);
+
+        if (this.m_majorVersion >= this.m_config.activateParentBlockVersion) {
             if (headerOnly) {
                 writer.clear();
             }
@@ -483,10 +482,10 @@ export class Block {
             writer.hash(this.m_parentBlock.previousBlockHash);
             writer.uint32_t(this.m_nonce, true);
 
-            const treeHash = TurtleCoinCrypto.tree_hash_from_branch(
+            const treeHash = await TurtleCoinCrypto.tree_hash_from_branch(
                 this.m_parentBlock.baseTransactionBranch,
-                this.m_parentBlock.minerTransaction.hash,
-                0,
+                await this.m_parentBlock.minerTransaction.hash(),
+                0
             );
 
             writer.hash(treeHash);
@@ -520,13 +519,14 @@ export class Block {
      * @param [headerOnly] whether to return just the header or the full block
      * @returns the hexadecimal (blob) representation of the hashing buffer
      */
-    public toHashingString(headerOnly: boolean = false): string {
-        return this.toHashingBuffer(headerOnly).toString('hex');
+    public async toHashingString (headerOnly = false): Promise<string> {
+        return (await this.toHashingBuffer(headerOnly))
+            .toString('hex');
     }
 }
 
 /** @ignore */
-function getBlockHash(data: Buffer): string {
+async function getBlockHash (data: Buffer): Promise<string> {
     const writer = new Writer();
 
     writer.varint(data.length);
@@ -536,7 +536,7 @@ function getBlockHash(data: Buffer): string {
 }
 
 /** @ignore */
-function getBlockPoWHash(data: Buffer, majorVersion: number): string {
+async function getBlockPoWHash (data: Buffer, majorVersion: number): Promise<string> {
     const blob = data.toString('hex');
 
     switch (majorVersion) {
@@ -549,7 +549,9 @@ function getBlockPoWHash(data: Buffer, majorVersion: number): string {
         case 5:
             return TurtleCoinCrypto.cn_turtle_lite_slow_hash_v2(blob);
         case 6:
-            return TurtleCoinCrypto.chukwa_slow_hash(blob);
+            return TurtleCoinCrypto.chukwa_slow_hash_v1(blob);
+        case 7:
+            return TurtleCoinCrypto.chukwa_slow_hash_v2(blob);
         default:
             throw new Error('Unhandled major block version');
     }

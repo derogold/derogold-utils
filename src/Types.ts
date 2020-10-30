@@ -2,13 +2,13 @@
 //
 // Please see the included LICENSE file for more information.
 
-import {Crypto} from 'turtlecoin-crypto';
+import { Crypto } from 'wrkzcoin-crypto';
 import * as BigInteger from 'big-integer';
 
 /** @ignore */
 const TurtleCoinCrypto = new Crypto();
 
-export {TurtleCoinCrypto};
+export { TurtleCoinCrypto };
 
 /** @ignore */
 export enum PortableStorageConstants {
@@ -16,6 +16,8 @@ export enum PortableStorageConstants {
     SIGNATURE_B = 0x01020101,
     VERSION = 1,
 }
+
+export { ICryptoConfig } from 'wrkzcoin-crypto';
 
 export * from './Types/IExtraNonce';
 
@@ -33,6 +35,14 @@ export * from './Types/MultisigInterfaces';
 
 export * from './Types/ICryptoNote';
 
-export {PortableStorage, StorageType} from './Types/PortableStorage';
+export * from './Types/Ledger';
 
-export {BigInteger};
+export * from './Types/WalletAPI';
+
+export * from './Types/LegacyTurtleCoind';
+
+export * from './Types/TurtleCoind';
+
+export { PortableStorage, StorageType } from './Types/PortableStorage';
+
+export { BigInteger };

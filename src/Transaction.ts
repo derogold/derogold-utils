@@ -2,7 +2,8 @@
 //
 // Please see the included LICENSE file for more information.
 
-import {Common} from './Common';
+import { Common } from './Common';
+import { Address } from './Address';
 import {
     BigInteger,
     ED25519,
@@ -10,12 +11,13 @@ import {
     ExtraTag,
     TransactionInputs,
     TransactionOutputs,
-    TurtleCoinCrypto,
+    TurtleCoinCrypto
 } from './Types';
-import {Reader, Writer} from 'bytestream-helper';
+import { Reader, Writer } from 'bytestream-helper';
 
 /** @ignore */
-const TransactionVersion2Suffix = 'bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a0000000000000000000000000000000000000000000000000000000000000000';
+const TransactionVersion2Suffix = 'bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a' +
+    '0000000000000000000000000000000000000000000000000000000000000000';
 
 /** @ignore */
 interface Cache {
@@ -29,11 +31,10 @@ interface Cache {
  * Represents a TurtleCoin Transaction
  */
 export class Transaction {
-
     /**
-     * Returns the total amount of the transaction inputs
+     * Returns the total amount of the inputs
      */
-    public get amount(): number {
+    private get inputAmount (): number {
         let amount = BigInteger.zero;
 
         for (const input of this.inputs) {
@@ -46,9 +47,87 @@ export class Transaction {
     }
 
     /**
+     * Returns the total amount of the outputs
+     */
+    private get outputAmount (): number {
+        let amount = BigInteger.zero;
+
+        for (const output of this.outputs) {
+            if (output.type === TransactionOutputs.OutputType.KEY) {
+                amount = amount.add((output as TransactionOutputs.KeyOutput).amount);
+            }
+        }
+
+        return amount.toJSNumber();
+    }
+
+    /**
+     * Returns whether this is a coinbase transaction or not
+     */
+    public get isCoinbase (): boolean {
+        for (const input of this.inputs) {
+            if (input.type === TransactionInputs.InputType.COINBASE) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Calculates the transaction fingerprint if the transaction
+     * is a coinbase transaction and it contains the information
+     * necessary to do so
+     */
+    public async fingerprint (): Promise<string | undefined> {
+        if (!this.isCoinbase) {
+            return;
+        }
+
+        if (!this.recipientPublicViewKey || !this.recipientPublicSpendKey) {
+            return;
+        }
+
+        const writer = new Writer();
+
+        writer.hash(this.recipientPublicSpendKey);
+
+        writer.hash(this.recipientPublicViewKey);
+
+        return TurtleCoinCrypto.cn_fast_hash(writer.blob);
+    }
+
+    /**
+     * Returns the recipient address if this is a coinbase
+     * transaction and the information is available
+     */
+    public async recipient (): Promise<Address | undefined> {
+        if (!this.isCoinbase) {
+            return;
+        }
+
+        if (!this.recipientPublicSpendKey || !this.recipientPublicViewKey) {
+            return;
+        }
+
+        return Address.fromPublicKeys(this.recipientPublicSpendKey, this.recipientPublicViewKey);
+    }
+
+    /**
+     * Returns the total amount transferred in the transaction
+     */
+    public get amount (): number {
+        if (this.isCoinbase) {
+            return this.outputAmount;
+        }
+
+        return this.inputAmount;
+    }
+
+    /**
      * Returns the transaction extra as a buffer
      */
-    public get extra(): Buffer {
+    public get extra (): Buffer {
         if (!this.m_readonly) {
             return writeExtra(this.m_extra);
         }
@@ -59,7 +138,7 @@ export class Transaction {
     /**
      * Returns the structured arbitrary data found in the transaction extra
      */
-    public get extraData(): Buffer {
+    public get extraData (): Buffer {
         let result = Buffer.alloc(0);
 
         for (const tag of this.m_extra) {
@@ -79,38 +158,24 @@ export class Transaction {
     /**
      * Returns the fee of the transaction
      */
-    public get fee(): number {
-        const inputAmount = BigInteger(this.amount);
-
-        if (inputAmount === BigInteger.zero) {
-            return 0;
-        }
-
-        let outputAmount = BigInteger.zero;
-
-        for (const output of this.outputs) {
-            if (output.type === TransactionOutputs.OutputType.KEY) {
-                outputAmount = outputAmount.add((output as TransactionOutputs.KeyOutput).amount);
-            }
-        }
-
-        return inputAmount.subtract(outputAmount).toJSNumber();
+    public get fee (): number {
+        return this.amount - this.outputAmount;
     }
 
     /**
      * Returns the transaction hash
      */
-    public get hash(): string {
+    public async hash (): Promise<string> {
         if (this.m_cached.blob && this.m_cached.blob === this.toString() && this.m_cached.hash) {
             return this.m_cached.hash;
         }
 
         this.m_cached.blob = this.toString();
 
-        const hash = TurtleCoinCrypto.cn_fast_hash(this.m_cached.blob);
+        const hash = await TurtleCoinCrypto.cn_fast_hash(this.m_cached.blob);
 
         if (this.version >= 2) {
-            const hash2 = TurtleCoinCrypto.cn_fast_hash(hash + TransactionVersion2Suffix);
+            const hash2 = await TurtleCoinCrypto.cn_fast_hash(hash + TransactionVersion2Suffix);
 
             this.m_cached.hash = hash2;
 
@@ -125,7 +190,7 @@ export class Transaction {
     /**
      * Returns the merged mining tag found within the transaction
      */
-    public get mergedMining(): ExtraTag.ExtraMergedMining | undefined {
+    public get mergedMining (): ExtraTag.ExtraMergedMining | undefined {
         let result;
 
         for (const tag of this.m_extra) {
@@ -140,7 +205,7 @@ export class Transaction {
     /**
      * Returns the payment ID found within the transaction
      */
-    public get paymentId(): string | undefined {
+    public get paymentId (): string | undefined {
         let result;
 
         for (const tag of this.m_extra) {
@@ -158,26 +223,89 @@ export class Transaction {
     }
 
     /**
+     * Increments the pool nonce by 1
+     */
+    public incrementPoolNonce () {
+        this.poolNonce = this.poolNonce.add(1);
+    }
+
+    /**
+     * Returns pool nonce field within the transaction as Buffer
+     */
+    public get poolNonce (): BigInteger.BigInteger {
+        let result;
+
+        for (const tag of this.m_extra) {
+            if (tag.tag === ExtraTag.ExtraTagType.POOL_NONCE) {
+                result = BigInteger((tag as ExtraTag.ExtraPoolNonce).data
+                    .toString('hex'));
+            }
+        }
+
+        if (!result) {
+            return BigInteger.zero;
+        } else {
+            return result;
+        }
+    }
+
+    /**
+     * Sets the pool nonce field within the transaction from a Buffer
+     * @param nonce the nonce data to use
+     */
+    public set poolNonce (nonce: BigInteger.BigInteger) {
+        if (!nonce) {
+            this.m_extra = removeExtraTag(this.m_extra, ExtraTag.ExtraTagType.POOL_NONCE);
+
+            return;
+        }
+
+        const buffer = Common.hexPadToBuffer(nonce);
+
+        const tag = new ExtraTag.ExtraPoolNonce(buffer);
+
+        this.m_extra = removeExtraTag(this.m_extra, tag.tag);
+
+        this.m_extra.push(tag);
+
+        this.m_extra.sort((a, b) => (a.tag > b.tag) ? 1 : -1);
+    }
+
+    /**
+     * Returns the pool nonce field as hexadecimal text
+     */
+    public get poolNonceHex (): string | undefined {
+        for (const tag of this.m_extra) {
+            if (tag.tag === ExtraTag.ExtraTagType.POOL_NONCE) {
+                return (tag as ExtraTag.ExtraPoolNonce).data
+                    .toString('hex');
+            }
+        }
+
+        return undefined;
+    }
+
+    /**
      * Returns the transaction prefix in hexadecimal (blob) form
      */
-    public get prefix(): string {
+    public get prefix (): string {
         return this.toBuffer(true).toString('hex');
     }
 
     /**
      * Returns the transaction prefix hash
      */
-    public get prefixHash(): string {
+    public async prefixHash (): Promise<string> {
         if (this.m_cached.prefix && this.m_cached.prefix === this.prefix && this.m_cached.prefixHash) {
             return this.m_cached.prefixHash;
         }
 
         this.m_cached.prefix = this.prefix;
 
-        const hash = TurtleCoinCrypto.cn_fast_hash(this.m_cached.prefix);
+        const hash = await TurtleCoinCrypto.cn_fast_hash(this.m_cached.prefix);
 
         if (this.version >= 2) {
-            const hash2 = TurtleCoinCrypto.cn_fast_hash(hash + TransactionVersion2Suffix);
+            const hash2 = await TurtleCoinCrypto.cn_fast_hash(hash + TransactionVersion2Suffix);
 
             this.m_cached.prefixHash = hash2;
 
@@ -190,14 +318,67 @@ export class Transaction {
     }
 
     /**
-     * Returns the transaction public key
+     * Returns the transaction public key (if available)
      */
-    public get publicKey(): string | undefined {
+    public get publicKey (): string | undefined {
         let result;
 
         for (const tag of this.m_extra) {
             if (tag.tag === ExtraTag.ExtraTagType.PUBKEY) {
                 result = (tag as ExtraTag.ExtraPublicKey).publicKey;
+            }
+        }
+
+        if (!result && this.transactionKeys.publicKey) {
+            result = this.transactionKeys.publicKey;
+        }
+
+        return result;
+    }
+
+    /**
+     * Returns the transaction private key (if available)
+     */
+    public get privateKey (): string | undefined {
+        let result;
+
+        for (const tag of this.m_extra) {
+            if (tag.tag === ExtraTag.ExtraTagType.TRANSACTION_PRIVATE_KEY) {
+                result = (tag as ExtraTag.ExtraTransactionPrivateKey).privateKey;
+            }
+        }
+
+        if (!result && this.transactionKeys.privateKey) {
+            result = this.transactionKeys.privateKey;
+        }
+
+        return result;
+    }
+
+    /**
+     * Returns the transacton recipient public view key (if available)
+     */
+    public get recipientPublicViewKey (): string | undefined {
+        let result;
+
+        for (const tag of this.m_extra) {
+            if (tag.tag === ExtraTag.ExtraTagType.RECIPIENT_PUBLIC_VIEW_KEY) {
+                result = (tag as ExtraTag.ExtraRecipientPublicViewKey).publicKey;
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Returns the transacton recipient public spend key (if available)
+     */
+    public get recipientPublicSpendKey (): string | undefined {
+        let result;
+
+        for (const tag of this.m_extra) {
+            if (tag.tag === ExtraTag.ExtraTagType.RECIPIENT_PUBLIC_SPEND_KEY) {
+                result = (tag as ExtraTag.ExtraRecipientPublicSpendKey).publicKey;
             }
         }
 
@@ -207,7 +388,7 @@ export class Transaction {
     /**
      * Returns the transaction size in bytes
      */
-    public get size(): number {
+    public get size (): number {
         return this.toBuffer().length;
     }
 
@@ -215,7 +396,7 @@ export class Transaction {
      * The unlock time (or block height) for when the funds in the transaction are made available.
      * Returns a BigInteger only if the value exceeds MAX_SAFE_INTEGER
      */
-    public get unlockTime(): BigInteger.BigInteger | number {
+    public get unlockTime (): BigInteger.BigInteger | number {
         if (this.m_unlockTime.greater(Number.MAX_SAFE_INTEGER)) {
             return this.m_unlockTime;
         } else {
@@ -223,7 +404,7 @@ export class Transaction {
         }
     }
 
-    public set unlockTime(value: BigInteger.BigInteger | number) {
+    public set unlockTime (value: BigInteger.BigInteger | number) {
         if (typeof value === 'number') {
             value = BigInteger(value);
         }
@@ -237,8 +418,12 @@ export class Transaction {
      * we will be changing data after a transaction is created and signed as it would
      * invalidate the transaction signatures
      */
-    public get readonly(): boolean {
+    public get readonly (): boolean {
         return this.m_readonly;
+    }
+
+    public set readonly (value: boolean) {
+        this.m_readonly = value;
     }
 
     /**
@@ -246,10 +431,10 @@ export class Transaction {
      * @param data the transaction data blob
      * @returns the new transaction object
      */
-    public static from(data: Buffer | string): Transaction {
-        const reader = new Reader(data);
-
+    public static async from (data: Buffer | string): Promise<Transaction> {
         const result = new Transaction();
+
+        const reader = new Reader(data);
 
         result.m_readonly = true;
 
@@ -263,11 +448,12 @@ export class Transaction {
             const type = reader.uint8_t().toJSNumber();
 
             switch (type) {
-                case TransactionInputs.InputType.COINBASE:
+                case TransactionInputs.InputType.COINBASE: {
                     const blockIndex = reader.varint().toJSNumber();
                     result.inputs.push(new TransactionInputs.CoinbaseInput(blockIndex));
+                }
                     break;
-                case TransactionInputs.InputType.KEY:
+                case TransactionInputs.InputType.KEY: {
                     const amount = reader.varint();
                     const keyOffsets: BigInteger.BigInteger[] = [];
                     const keyOffsetsLength = reader.varint().toJSNumber();
@@ -276,6 +462,7 @@ export class Transaction {
                     }
                     const keyImage = reader.hash();
                     result.inputs.push(new TransactionInputs.KeyInput(amount, keyOffsets, keyImage));
+                }
                     break;
                 default:
                     throw new Error('Unknown input type');
@@ -303,7 +490,7 @@ export class Transaction {
         result.m_extra = readExtra(result.m_rawExtra);
 
         if (result.publicKey) {
-            result.transactionKeys.publicKey = result.publicKey;
+            await result.transactionKeys.setPublicKey(result.publicKey);
         }
 
         /* If there are bytes remaining and mod 64 then they are signatures */
@@ -317,7 +504,7 @@ export class Transaction {
 
                 const signatures = [];
 
-                for (const offset of inputObject.keyOffsets) {
+                for (let i = 0; i < inputObject.keyOffsets.length; i++) {
                     const sig = reader.hex(64);
 
                     if (!Common.isHex128(sig)) {
@@ -338,28 +525,29 @@ export class Transaction {
         return result;
     }
 
-    public version: number = 1;
+    public version = 1;
     public inputs: TransactionInputs.ITransactionInput[] = [];
     public outputs: TransactionOutputs.ITransactionOutput[] = [];
     public signatures: string[][] = [];
-    public ignoredField: number = 0;
+    public ignoredField = 0;
     public transactionKeys: ED25519.KeyPair = new ED25519.KeyPair();
+
     protected m_unlockTime: BigInteger.BigInteger = BigInteger.zero;
     protected m_rawExtra: Buffer = Buffer.alloc(0);
-    protected m_readonly: boolean = false;
-    protected m_extra: ExtraTag.IExtraTag[] = [];
-    protected m_cached: Cache = {prefix: '', prefixHash: '', blob: '', hash: ''};
+    protected m_readonly = false;
+    public m_extra: ExtraTag.IExtraTag[] = [];
+    protected m_cached: Cache = { prefix: '', prefixHash: '', blob: '', hash: '' };
 
     /** @ignore */
-    public parseExtra(extra: Buffer) {
+    public async parseExtra (extra: Buffer): Promise<void> {
         this.m_readonly = true;
 
         this.m_rawExtra = extra;
 
         this.m_extra = readExtra(this.m_rawExtra);
 
-        if (this.publicKey) {
-            this.transactionKeys.publicKey = this.publicKey;
+        if (this.publicKey && await TurtleCoinCrypto.checkKey(this.publicKey)) {
+            await this.transactionKeys.setPublicKey(this.publicKey);
         }
     }
 
@@ -367,7 +555,7 @@ export class Transaction {
      * Adds the arbitrary data supplied to the transaction extra field
      * @param data arbitrary data to be included
      */
-    public addData(data: Buffer) {
+    public addData (data: Buffer) {
         if (this.readonly) {
             throw new Error('Transaction is read-only');
         }
@@ -375,7 +563,7 @@ export class Transaction {
         const subTag = new ExtraNonceTag.ExtraNonceData(data);
 
         let found = false;
-        // tslint:disable-next-line:prefer-for-of
+
         for (let i = 0; i < this.m_extra.length; i++) {
             if (this.m_extra[i].tag === ExtraTag.ExtraTagType.NONCE) {
                 (this.m_extra[i] as ExtraTag.ExtraNonce).addTag(subTag);
@@ -394,7 +582,7 @@ export class Transaction {
      * @param depth the depth of the blockchain branch in the merkle root
      * @param merkleRoot the merkle root value
      */
-    public addMergedMining(depth: number, merkleRoot: string) {
+    public addMergedMining (depth: number, merkleRoot: string) {
         if (this.readonly) {
             throw new Error('Transaction is read-only');
         }
@@ -412,7 +600,7 @@ export class Transaction {
      * Adds the supplied payment ID to the transaction extra field
      * @param paymentId the payment Id to include
      */
-    public addPaymentId(paymentId: string) {
+    public addPaymentId (paymentId: string) {
         if (this.readonly) {
             throw new Error('Transaction is read-only');
         }
@@ -438,7 +626,7 @@ export class Transaction {
      * Adds the public key for the transaction to the transaction extra field
      * @param publicKey the public key of the transaction
      */
-    public addPublicKey(publicKey: string) {
+    public async addPublicKey (publicKey: string): Promise<void> {
         if (this.readonly) {
             throw new Error('Transaction is read-only');
         }
@@ -451,7 +639,78 @@ export class Transaction {
 
         this.m_extra.sort((a, b) => (a.tag > b.tag) ? 1 : -1);
 
-        this.transactionKeys.publicKey = publicKey;
+        await this.transactionKeys.setPublicKey(publicKey);
+    }
+
+    /**
+     * Adds the private key for the transaction to the transaction extra field
+     * @param privateKey the private key of the transaction
+     */
+    public async addPrivateKey (privateKey: string): Promise<void> {
+        if (this.readonly) {
+            throw new Error('Transaction is read-only');
+        }
+
+        const tag = new ExtraTag.ExtraTransactionPrivateKey(privateKey);
+
+        this.m_extra = removeExtraTag(this.m_extra, tag.tag);
+
+        this.m_extra.push(tag);
+
+        this.m_extra.sort((a, b) => (a.tag > b.tag) ? 1 : -1);
+
+        await this.transactionKeys.setPrivateKey(privateKey);
+    }
+
+    /**
+     * generateTxProofOfWork
+     * @param diff difficulty for generateTxProofOfWork
+     */
+
+    public async generateTxProofOfWork (diff: number) {
+        if (this.readonly) {
+            throw new Error('Transaction is read-only');
+        }
+
+        let nonceTag = new ExtraTag.ExtraPowNonce(BigInteger(0));
+
+        let result: ExtraTag.IExtraTag[] = [];
+
+        for (const tag of this.m_extra) {
+            if (tag.tag !== nonceTag.tag) {
+                result.push(tag);
+            }
+        }
+
+        this.m_extra = result;
+        this.m_extra.push(nonceTag);
+
+        const prefix = this.prefix;
+
+        /* Find the pow nonce tag and nonce hole */
+        const tagOffset = prefix.indexOf('040000000000000000');
+
+        /* Then add 2 to skip the tag. */
+        const nonceOffset = tagOffset + 2;
+
+        /* Actual offset is half the nonce offset, since this is hex, but it
+         * will be deserialized into bytes taking up half the space */
+        const unserializedOffset = nonceOffset / 2;
+
+        const nonce = await TurtleCoinCrypto.generateTransactionPow(prefix, unserializedOffset, diff);
+
+        nonceTag = new ExtraTag.ExtraPowNonce(BigInteger(nonce));
+
+        result = [];
+
+        for (const tag of this.m_extra) {
+            if (tag.tag !== nonceTag.tag) {
+                result.push(tag);
+            }
+        }
+
+        this.m_extra = result;
+        this.m_extra.push(nonceTag);
     }
 
     /**
@@ -459,7 +718,7 @@ export class Transaction {
      * @param [headerOnly] whether we should return just the prefix or not
      * @returns the buffer representation
      */
-    public toBuffer(headerOnly: boolean = false): Buffer {
+    public toBuffer (headerOnly = false): Buffer {
         const writer = new Writer();
 
         writer.varint(this.version);
@@ -505,13 +764,13 @@ export class Transaction {
      * @param [headerOnly] whether we should return just the prefix or not
      * @returns the hexadecimal (blob)  representation
      */
-    public toString(headerOnly: boolean = false): string {
+    public toString (headerOnly = false): string {
         return this.toBuffer(headerOnly).toString('hex');
     }
 }
 
 /** @ignore */
-function removeExtraTag(tags: ExtraTag.IExtraTag[], removeTag: ExtraTag.ExtraTagType): ExtraTag.IExtraTag[] {
+function removeExtraTag (tags: ExtraTag.IExtraTag[], removeTag: ExtraTag.ExtraTagType): ExtraTag.IExtraTag[] {
     const result: ExtraTag.IExtraTag[] = [];
 
     for (const tag of tags) {
@@ -524,13 +783,18 @@ function removeExtraTag(tags: ExtraTag.IExtraTag[], removeTag: ExtraTag.ExtraTag
 }
 
 /** @ignore */
-function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
+function readExtra (data: Buffer): ExtraTag.IExtraTag[] {
     const tags: ExtraTag.IExtraTag[] = [];
     const seen = {
         padding: false,
         publicKey: false,
         nonce: false,
         mergedMining: false,
+        powNonce: false,
+        transactionPrivateKey: false,
+        recipientPublicViewKey: false,
+        recipientPublicSpendKey: false,
+        poolNonce: false
     };
 
     const reader = new Reader(data);
@@ -550,8 +814,12 @@ function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
         switch (tag) {
             case ExtraTag.ExtraTagType.PADDING:
                 if (!seen.padding) {
-                    tags.push(ExtraTag.ExtraPadding.from(reader.bytes(totalLength)));
-                    seen.padding = true;
+                    try {
+                        tags.push(ExtraTag.ExtraPadding.from(reader.bytes(totalLength)));
+                        seen.padding = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
                 } else {
                     reader.skip();
                 }
@@ -559,8 +827,12 @@ function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
             case ExtraTag.ExtraTagType.PUBKEY:
                 totalLength += 32;
                 if (!seen.publicKey && reader.unreadBytes >= totalLength) {
-                    tags.push(ExtraTag.ExtraPublicKey.from(reader.bytes(totalLength)));
-                    seen.publicKey = true;
+                    try {
+                        tags.push(ExtraTag.ExtraPublicKey.from(reader.bytes(totalLength)));
+                        seen.publicKey = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
                 } else {
                     reader.skip();
                 }
@@ -573,6 +845,10 @@ function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
                     let nonceLength = 0;
                     try {
                         nonceLength = tmpReader.varint().toJSNumber();
+                        if (nonceLength > reader.unreadBytes) {
+                            reader.skip();
+                            continue;
+                        }
                     } catch {
                         reader.skip();
                         continue;
@@ -580,8 +856,12 @@ function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
 
                     totalLength += Common.varintLength(nonceLength) + nonceLength;
 
-                    tags.push(ExtraTag.ExtraNonce.from(reader.bytes(totalLength)));
-                    seen.nonce = true;
+                    try {
+                        tags.push(ExtraTag.ExtraNonce.from(reader.bytes(totalLength)));
+                        seen.nonce = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
                 } else {
                     reader.skip();
                 }
@@ -594,6 +874,10 @@ function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
                     let mmLength = 0;
                     try {
                         mmLength = tmpReader.varint().toJSNumber();
+                        if (mmLength > reader.unreadBytes) {
+                            reader.skip();
+                            continue;
+                        }
                     } catch {
                         reader.skip();
                         continue;
@@ -601,8 +885,93 @@ function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
 
                     totalLength += Common.varintLength(mmLength) + mmLength;
 
-                    tags.push(ExtraTag.ExtraMergedMining.from(reader.bytes(totalLength)));
-                    seen.mergedMining = true;
+                    try {
+                        tags.push(ExtraTag.ExtraMergedMining.from(reader.bytes(totalLength)));
+                        seen.mergedMining = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
+                } else {
+                    reader.skip();
+                }
+                break;
+            case ExtraTag.ExtraTagType.POW_NONCE:
+                totalLength += 8;
+                if (!seen.powNonce && reader.unreadBytes >= totalLength) {
+                    try {
+                        tags.push(ExtraTag.ExtraPowNonce.from(reader.bytes(totalLength)));
+                        seen.powNonce = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
+                } else {
+                    reader.skip();
+                }
+                break;
+            case ExtraTag.ExtraTagType.TRANSACTION_PRIVATE_KEY:
+                totalLength += 32;
+                if (!seen.transactionPrivateKey && reader.unreadBytes >= totalLength) {
+                    try {
+                        tags.push(ExtraTag.ExtraTransactionPrivateKey.from(reader.bytes(totalLength)));
+                        seen.transactionPrivateKey = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
+                } else {
+                    reader.skip();
+                }
+                break;
+            case ExtraTag.ExtraTagType.RECIPIENT_PUBLIC_VIEW_KEY:
+                totalLength += 32;
+                if (!seen.recipientPublicViewKey && reader.unreadBytes >= totalLength) {
+                    try {
+                        tags.push(ExtraTag.ExtraRecipientPublicViewKey.from(reader.bytes(totalLength)));
+                        seen.recipientPublicViewKey = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
+                } else {
+                    reader.skip();
+                }
+                break;
+            case ExtraTag.ExtraTagType.RECIPIENT_PUBLIC_SPEND_KEY:
+                totalLength += 32;
+                if (!seen.recipientPublicSpendKey && reader.unreadBytes >= totalLength) {
+                    try {
+                        tags.push(ExtraTag.ExtraRecipientPublicSpendKey.from(reader.bytes(totalLength)));
+                        seen.recipientPublicSpendKey = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
+                } else {
+                    reader.skip();
+                }
+                break;
+            case ExtraTag.ExtraTagType.POOL_NONCE:
+                if (!seen.poolNonce) {
+                    const tmpReader = new Reader(reader.unreadBuffer);
+                    tmpReader.skip(totalLength);
+
+                    let nonceLength = 0;
+                    try {
+                        nonceLength = tmpReader.varint().toJSNumber();
+                        if (nonceLength > reader.unreadBytes) {
+                            reader.skip();
+                            continue;
+                        }
+                    } catch {
+                        reader.skip();
+                        continue;
+                    }
+
+                    totalLength += Common.varintLength(nonceLength) + nonceLength;
+
+                    try {
+                        tags.push(ExtraTag.ExtraPoolNonce.from(reader.bytes(totalLength)));
+                        seen.nonce = true;
+                    } catch (e) {
+                        reader.skip();
+                    }
                 } else {
                     reader.skip();
                 }
@@ -617,7 +986,7 @@ function readExtra(data: Buffer): ExtraTag.IExtraTag[] {
 }
 
 /** @ignore */
-function writeExtra(tags: ExtraTag.IExtraTag[]): Buffer {
+function writeExtra (tags: ExtraTag.IExtraTag[]): Buffer {
     const writer = new Writer();
 
     for (const tag of tags) {

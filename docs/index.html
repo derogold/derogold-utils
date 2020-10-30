@@ -65,7 +65,7 @@
 					<h1>TurtleCoin Utilities</h1>
 				</a>
 				<p><a href="https://nodei.co/npm/turtlecoin-utils/"><img src="https://nodei.co/npm/turtlecoin-utils.png?downloads=true&stars=true" alt="NPM"></a></p>
-				<p><img src="https://img.shields.io/badge/node-%3E%3D6-blue.svg" alt="Prerequisite"> <a href="https://utils.turtlecoin.dev"><img src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" alt="Documentation"></a> <a href="https://github.com/turtlecoin/turtlecoin-utils/graphs/commit-activity"><img src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" alt="Maintenance"></a> <a href="https://github.com/turtlecoin/turtlecoin-utils/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-yellow.svg" alt="License: GPL-3.0"></a> <a href="https://twitter.com/_TurtleCoin"><img src="https://img.shields.io/twitter/follow/_TurtleCoin.svg?style=social" alt="Twitter: TurtlePay"></a></p>
+				<p><img src="https://img.shields.io/badge/node-%3E%3D10-blue.svg" alt="Prerequisite"> <a href="https://utils.turtlecoin.dev"><img src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" alt="Documentation"></a> <a href="https://github.com/turtlecoin/turtlecoin-utils/graphs/commit-activity"><img src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" alt="Maintenance"></a> <a href="https://github.com/turtlecoin/turtlecoin-utils/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-yellow.svg" alt="License: GPL-3.0"></a> <a href="https://twitter.com/_TurtleCoin"><img src="https://img.shields.io/twitter/follow/_TurtleCoin.svg?style=social" alt="Twitter: TurtlePay"></a></p>
 				<a href="#master-build-status" id="master-build-status" style="color: inherit; text-decoration: none;">
 					<h4>Master Build Status</h4>
 				</a>
@@ -74,7 +74,23 @@
 					<h4>Development Build Status</h4>
 				</a>
 				<p><a href="https://github.com/turtlecoin/turtlecoin-utils/actions"><img src="https://github.com/turtlecoin/turtlecoin-utils/workflows/CI%20Build%20Tests/badge.svg?branch=development" alt="Build Status"></a></p>
-				<p>This package contains code that wraps <a href="https://github.com/turtlecoin/turtlecoin-crypto">turtlecoin-crypto</a> primitives into an easier to use interface. This includes the ability to easily discover funds for a wallet, create transactions, sign transactions (ring signatures), create new wallets, verify addresses, and handful of other useful methods. These methods can then be wrapped into a Javascript-based wallet such as <a href="https://github.com/turtlecoin/turtlecoin-wallet-backend-js">turtlecoin-wallet-backend-js</a>.</p>
+				<a href="#overview" id="overview" style="color: inherit; text-decoration: none;">
+					<h2>Overview</h2>
+				</a>
+				<p>This package contains a number of different utility libraries that help with the following network and wallet based activities:</p>
+				<ul>
+					<li>Wallet (and Address) generation, verification, and encoding/decoding</li>
+					<li>Block handling, construction, decoding, and ID and PoW hash calculation</li>
+					<li>Block template handling</li>
+					<li>Multisig operations including Multisig participant message exchanges</li>
+					<li>RPC interations with TurtleCoind and Wallet-API</li>
+					<li>Network P2P communication protocols (connect to the P2P network directly)</li>
+					<li>Transaction construction facilities</li>
+					<li>Ledger hardware wallet interaction for the <a href="https://github.com/turtlecoin/ledger-turtlecoin-app">TurtleCoin® Ledger Wallet Application</a></li>
+					<li>Transaction handling, construction, decoding, hash calculations, TX_EXTRA parsing, etc</li>
+					<li>Deterministic subwallet generation</li>
+					<li>And much, much, more...</li>
+				</ul>
 				<p>If you experience any issues with this library, the best way to address such situations is to submit a Pull Request to resolve the issue you are running into.</p>
 				<a href="#installation" id="installation" style="color: inherit; text-decoration: none;">
 					<h2>Installation</h2>
@@ -94,20 +110,20 @@
     CryptoNote, 
     LevinPacket, 
     Transaction
-} <span class="hljs-keyword">from</span> <span class="hljs-string">'turtlecoin-utils'</span>
+} <span class="hljs-keyword">from</span> <span class="hljs-string">&#x27;turtlecoin-utils&#x27;</span>
 <span class="hljs-keyword">const</span> coinUtils = <span class="hljs-keyword">new</span> CryptoNote()</code></pre>
 				<a href="#javascript" id="javascript" style="color: inherit; text-decoration: none;">
 					<h3>Javascript</h3>
 				</a>
-				<pre><code class="language-javascript"><span class="hljs-keyword">const</span> TurtleCoinUtils = <span class="hljs-built_in">require</span>(<span class="hljs-string">'turtlecoin-utils'</span>)
+				<pre><code class="language-javascript"><span class="hljs-keyword">const</span> TurtleCoinUtils = <span class="hljs-built_in">require</span>(<span class="hljs-string">&#x27;turtlecoin-utils&#x27;</span>)
 <span class="hljs-keyword">const</span> coinUtils = <span class="hljs-keyword">new</span> TurtleCoinUtils.CryptoNote()</code></pre>
 				<a href="#browser-support" id="browser-support" style="color: inherit; text-decoration: none;">
 					<h3>Browser Support</h3>
 				</a>
 				<p>When packing for the browser with a tool like <a href="https://webpack.js.org/">webpack</a> we advise that you use the ready <code>event</code> of the webpacked module to determine when the Cryptographic methods are available.</p>
-				<pre><code class="language-html"><span class="hljs-tag">&lt;<span class="hljs-name">script</span> <span class="hljs-attr">src</span>=<span class="hljs-string">"TurtleCoinUtils.js"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
-<span class="hljs-tag">&lt;<span class="hljs-name">script</span>&gt;</span><span class="actionscript">
-  TurtleCoinUtils.on(<span class="hljs-string">'ready'</span>, () =&gt; {
+				<pre><code class="language-html"><span class="hljs-tag">&lt;<span class="hljs-name">script</span> <span class="hljs-attr">src</span>=<span class="hljs-string">&quot;TurtleCoinUtils.js&quot;</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">script</span>&gt;</span><span class="javascript">
+  TurtleCoinUtils.on(<span class="hljs-string">&#x27;ready&#x27;</span>, <span class="hljs-function">() =&gt;</span> {
     <span class="hljs-keyword">const</span> coinUtils = <span class="hljs-keyword">new</span> TurtleCoinUtils.CryptoNote()
   })
 </span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span></code></pre>
@@ -151,6 +167,9 @@
 						<a href="modules/interfaces.html">Interfaces</a>
 					</li>
 					<li class=" tsd-kind-namespace">
+						<a href="modules/ledgertypes.html">Ledger<wbr>Types</a>
+					</li>
+					<li class=" tsd-kind-namespace">
 						<a href="modules/levinpayloads.html">Levin<wbr>Payloads</a>
 					</li>
 					<li class=" tsd-kind-namespace">
@@ -158,6 +177,12 @@
 					</li>
 					<li class=" tsd-kind-namespace">
 						<a href="modules/multisiginterfaces.html">Multisig<wbr>Interfaces</a>
+					</li>
+					<li class=" tsd-kind-namespace">
+						<a href="modules/turtlecoindtypes.html">Turtle<wbr>Coind<wbr>Types</a>
+					</li>
+					<li class=" tsd-kind-namespace">
+						<a href="modules/walletapitypes.html">WalletAPITypes</a>
 					</li>
 				</ul>
 			</nav>
@@ -179,6 +204,15 @@
 						<a href="classes/cryptonote.html" class="tsd-kind-icon">Crypto<wbr>Note</a>
 					</li>
 					<li class=" tsd-kind-class">
+						<a href="classes/ledgerdevice.html" class="tsd-kind-icon">Ledger<wbr>Device</a>
+					</li>
+					<li class=" tsd-kind-class">
+						<a href="classes/ledgernote.html" class="tsd-kind-icon">Ledger<wbr>Note</a>
+					</li>
+					<li class=" tsd-kind-class">
+						<a href="classes/legacyturtlecoind.html" class="tsd-kind-icon">Legacy<wbr>Turtle<wbr>Coind</a>
+					</li>
+					<li class=" tsd-kind-class">
 						<a href="classes/levinpacket.html" class="tsd-kind-icon">Levin<wbr>Packet</a>
 					</li>
 					<li class=" tsd-kind-class">
@@ -192,6 +226,15 @@
 					</li>
 					<li class=" tsd-kind-class">
 						<a href="classes/transaction.html" class="tsd-kind-icon">Transaction</a>
+					</li>
+					<li class=" tsd-kind-class">
+						<a href="classes/turtlecoind.html" class="tsd-kind-icon">Turtle<wbr>Coind</a>
+					</li>
+					<li class=" tsd-kind-class">
+						<a href="classes/walletapi.html" class="tsd-kind-icon">WalletAPI</a>
+					</li>
+					<li class=" tsd-kind-function">
+						<a href="globals.html#on" class="tsd-kind-icon">on</a>
 					</li>
 				</ul>
 			</nav>
@@ -209,6 +252,10 @@
 				<li class="tsd-kind-accessor tsd-parent-kind-class"><span class="tsd-kind-icon">Accessor</span></li>
 			</ul>
 			<ul class="tsd-legend">
+				<li class="tsd-kind-constructor tsd-parent-kind-class tsd-is-inherited"><span class="tsd-kind-icon">Inherited constructor</span></li>
+				<li class="tsd-kind-method tsd-parent-kind-class tsd-is-inherited"><span class="tsd-kind-icon">Inherited method</span></li>
+			</ul>
+			<ul class="tsd-legend">
 				<li class="tsd-kind-method tsd-parent-kind-class tsd-is-static"><span class="tsd-kind-icon">Static method</span></li>
 			</ul>
 		</div>
@@ -219,6 +266,5 @@
 </div>
 <div class="overlay"></div>
 <script src="assets/js/main.js"></script>
-<script>if (location.protocol == 'file:') document.write('<script src="assets/js/search.js"><' + '/script>');</script>
 </body>
 </html>

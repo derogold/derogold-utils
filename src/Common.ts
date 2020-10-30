@@ -2,13 +2,26 @@
 //
 // Please see the included LICENSE file for more information.
 
-import {Writer} from 'bytestream-helper';
-import {BigInteger} from './Types';
+import { Writer } from 'bytestream-helper';
+import { BigInteger } from './Types';
+import { Config, ICoinConfig, ICoinRunningConfig } from './Config';
 
 /** @ignore */
 export class Common {
-    public static absoluteToRelativeOffsets(
-        offsets: BigInteger.BigInteger[] | number[] | string []): BigInteger.BigInteger[] {
+    public static mergeConfig (config: ICoinConfig): ICoinRunningConfig {
+        const merged = Config;
+
+        Object.keys(config)
+            .forEach(key => {
+                merged[key] = config[key];
+            });
+
+        return merged;
+    }
+
+    public static absoluteToRelativeOffsets (
+        offsets: BigInteger.BigInteger[] | number[] | string []
+    ): BigInteger.BigInteger[] {
         const offsetsCopy: BigInteger.BigInteger[] = [];
 
         for (const offset of offsets) {
@@ -32,8 +45,9 @@ export class Common {
         return offsetsCopy;
     }
 
-    public static relativeToAbsoluteOffsets(
-        offsets: BigInteger.BigInteger[] | number[] | string[]): BigInteger.BigInteger[] {
+    public static relativeToAbsoluteOffsets (
+        offsets: BigInteger.BigInteger[] | number[] | string[]
+    ): BigInteger.BigInteger[] {
         const offsetsCopy: BigInteger.BigInteger[] = [];
 
         for (const offset of offsets) {
@@ -57,17 +71,7 @@ export class Common {
         return offsetsCopy;
     }
 
-    public static bin2hex(bin: Uint8Array): string {
-        const result = [];
-
-        for (const b of bin) {
-            result.push(('0' + b.toString(16)).slice(-2));
-        }
-
-        return result.join('');
-    }
-
-    public static isHex(value: string): boolean {
+    public static isHex (value: string): boolean {
         if (value.length % 2 !== 0) {
             return false;
         }
@@ -77,29 +81,36 @@ export class Common {
         return regex.test(value);
     }
 
-    public static isHex64(value: string): boolean {
+    public static isHex64 (value: string): boolean {
         return (Common.isHex(value) && value.length === 64);
     }
 
-    public static isHex128(value: string): boolean {
+    public static isHex128 (value: string): boolean {
         return (Common.isHex(value) && value.length === 128);
     }
 
-    public static str2bin(str: string): Uint8Array {
-        const result = new Uint8Array(str.length);
-        for (let i = 0; i < str.length; i++) {
-            result[i] = str.charCodeAt(i);
-        }
-
-        return result;
-    }
-
-    public static varintLength(value: BigInteger.BigInteger | number): number {
+    public static varintLength (value: BigInteger.BigInteger | number): number {
         if (typeof value === 'number') {
             value = BigInteger(value);
         }
         const writer = new Writer();
         writer.varint(value);
         return writer.length;
+    }
+
+    public static hexPad (value: number | BigInteger.BigInteger, padLength?: number): string {
+        if (typeof value === 'number') {
+            value = BigInteger(value);
+        }
+
+        const hex = value.toString(16);
+
+        padLength = padLength || Math.round(hex.length / 2) * 2;
+
+        return hex.padStart(padLength, '0');
+    }
+
+    public static hexPadToBuffer (value: number | BigInteger.BigInteger, padLength?: number): Buffer {
+        return Buffer.from(Common.hexPad(value, padLength), 'hex');
     }
 }
